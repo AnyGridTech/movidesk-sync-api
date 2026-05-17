@@ -14,15 +14,15 @@ datasource db {
 
 model Tickets {
   id                 Int        @id @default(autoincrement())
-  ticket             Int
+  ticket             Int        @unique
   distributor        String
   state              String
   inverterModel      String
-  serialNumber       String     @unique
-  systemType         SystemType //
+  serialNumber       String
+  systemType         SystemType 
   error              String?
   priority           Priority
-  workflow           String
+  workflow           String?
   daysOpen           Int        @default(0)
   warrantyApprovedAt DateTime?
   warrantyDeniedAt   DateTime?
@@ -39,6 +39,7 @@ enum SystemType {
   CHARGER
   BATTERY
   DATALOGGER
+  GENERAL
 }
 
 enum Priority {

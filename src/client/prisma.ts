@@ -3,7 +3,6 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import "dotenv/config";
 
-console.log("DATABASE_URL:", process.env.DATABASE_URL);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
