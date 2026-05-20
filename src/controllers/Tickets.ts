@@ -4,6 +4,7 @@ import type { MovideskTicket } from "../types/MovideskTicket.js";
 import { prisma } from "../client/prisma.js";
 import { calcPriority } from "../utils/calcPriority.js";
 import { calcDaysOpen } from "../utils/calcDaysOpen.js";
+import type { SystemType } from "../generated/prisma/enums.js";
 
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
@@ -15,7 +16,7 @@ const getFieldItem = (ticket: MovideskTicket, fieldId: number) =>
 
 class Tickets {
   async sync(req: Request, res: Response) {
-    const PAGE_SIZE = 1000;
+    const PAGE_SIZE = 400;
     let skip = 0;
     let totalSaved = 0;
     let hasMore = true;
@@ -28,7 +29,7 @@ class Tickets {
             $select: "id,status,createdDate,customFieldValues",
             $expand: "customFieldValues($expand=items)",
             $filter:
-              "category eq 'Garantia' and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
+              "((category eq 'Garantia') or (category eq 'Fora da Garantia')) and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
             $orderby: "id asc",
             $top: PAGE_SIZE,
             $skip: skip,
@@ -53,7 +54,8 @@ class Tickets {
           const error = getFieldItem(ticket, 144016);
           const workflow = getFieldItem(ticket, 215335); // precisa finalizar as demais estapas caso seja null;
           const warrantyApprovedAt = getFieldValue(ticket, 107733);
-          const warrantyDeniedAt = null; // ajustar com a criação do campo
+          const systemType = getFieldItem(ticket, 144016);
+          const warrantyDeniedAt = getFieldValue(ticket, 243250);
           const daysOpen = calcDaysOpen(warrantyApprovedAt);
           const priority = calcPriority(
             daysOpen,
@@ -61,10 +63,16 @@ class Tickets {
             warrantyApprovedAt,
           );
 
-          if (!serialNumber) {
+          if (!serialNumber || serialNumber === "XXXXXXXXXX") {
             console.log(`Ticket ${ticket.id} sem serial number, pulando...`);
             continue;
           }
+
+          const match = systemType?.match(/(?<=\[)[^\]]+(?=\])/g);
+
+          const rawType = match ? match[0].trim() : "GERAL";
+
+          const formattedType = rawType.replace(/[- ]/g, "_") as SystemType;
 
           await prisma.tickets.upsert({
             where: { ticket: ticketId },
@@ -72,7 +80,9 @@ class Tickets {
               distributor: distributor ?? "",
               state: state ?? "",
               inverterModel: inverterModel ?? "",
+              serialNumber: serialNumber,
               error: error,
+              systemType: formattedType,
               workflow: workflow,
               warrantyApprovedAt: warrantyApprovedAt
                 ? new Date(warrantyApprovedAt)
@@ -89,7 +99,7 @@ class Tickets {
               inverterModel: inverterModel ?? "",
               error: error,
               workflow: workflow,
-              systemType: "GENERAL",
+              systemType: formattedType,
               daysOpen: daysOpen,
               priority,
               warrantyApprovedAt: warrantyApprovedAt

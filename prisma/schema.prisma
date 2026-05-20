@@ -19,7 +19,7 @@ model Tickets {
   state              String
   inverterModel      String
   serialNumber       String
-  systemType         SystemType 
+  systemType         SystemType
   error              String?
   priority           Priority
   workflow           String?
@@ -31,15 +31,13 @@ model Tickets {
 }
 
 enum SystemType {
-  ON_GRID
-  OFF_GRID
-  ZERO_GRID
-  MICRO
-  HYBRID
-  CHARGER
-  BATTERY
-  DATALOGGER
-  GENERAL
+  OFF_GRID      @map("OFF-GRID")
+  ON_GRID       @map("ON-GRID")
+  GERAL         @map("GERAL")
+  SHINE_MASTER  @map("SHINE MASTER")
+  MONITORAMENTO @map("MONITORAMENTO")
+  ZERO_GRID     @map("ZERO-GRID")
+  HIBRIDO       @map("HIBRIDO")
 }
 
 enum Priority {
