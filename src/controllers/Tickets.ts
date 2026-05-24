@@ -7,11 +7,12 @@ import { calcDaysOpen } from "../utils/calcDaysOpen.js";
 import type { SystemType } from "../generated/prisma/enums.js";
 
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
-  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ?? null;
+  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
+  null;
 
 const getFieldItem = (ticket: MovideskTicket, fieldId: number) =>
-  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items?.[0]?.customFieldItem ?? null;
-
+  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items?.[0]
+    ?.customFieldItem ?? null;
 
 export async function syncTickets() {
   const PAGE_SIZE = 400;
@@ -25,7 +26,8 @@ export async function syncTickets() {
         token: process.env.MOVIDESK_TOKEN,
         $select: "id,status,createdDate,customFieldValues",
         $expand: "customFieldValues($expand=items)",
-        $filter: "((category eq 'Garantia') or (category eq 'Fora da Garantia')) and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
+        $filter:
+          "((category eq 'Garantia') or (category eq 'Fora da Garantia')) and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
         $orderby: "id asc",
         $top: PAGE_SIZE,
         $skip: skip,
@@ -42,18 +44,22 @@ export async function syncTickets() {
     console.log(`skip=${skip} | retornados: ${tickets.length}`);
 
     for (const ticket of tickets) {
-      const serialNumber     = getFieldValue(ticket, 92408);
-      const ticketId         = ticket.id;
-      const distributor      = getFieldItem(ticket, 92834);
-      const state            = getFieldItem(ticket, 92993);
-      const inverterModel    = getFieldItem(ticket, 152179);
-      const error            = getFieldItem(ticket, 144016);
-      const workflow         = getFieldItem(ticket, 215335) ?? ticket.status;
+      const serialNumber = getFieldValue(ticket, 92408);
+      const ticketId = ticket.id;
+      const distributor = getFieldItem(ticket, 92834);
+      const state = getFieldItem(ticket, 92993);
+      const inverterModel = getFieldItem(ticket, 152179);
+      const error = getFieldItem(ticket, 144016);
+      const workflow = getFieldItem(ticket, 215335);
       const warrantyApprovedAt = getFieldValue(ticket, 107733);
-      const warrantyDeniedAt   = getFieldValue(ticket, 243250);
-      const systemType       = getFieldItem(ticket, 144016);
-      const daysOpen         = calcDaysOpen(warrantyApprovedAt);
-      const priority         = calcPriority(daysOpen, ticket.status, warrantyApprovedAt);
+      const warrantyDeniedAt = getFieldValue(ticket, 243250);
+      const systemType = getFieldItem(ticket, 144016);
+      const daysOpen = calcDaysOpen(warrantyApprovedAt ?? warrantyDeniedAt);
+      const priority = calcPriority(
+        daysOpen,
+        ticket.status,
+        warrantyApprovedAt ?? warrantyDeniedAt,
+      );
 
       if (!serialNumber || serialNumber === "XXXXXXXXXX") {
         console.log(`Ticket ${ticket.id} sem serial number, pulando...`);
@@ -67,31 +73,39 @@ export async function syncTickets() {
       await prisma.tickets.upsert({
         where: { ticket: ticketId },
         update: {
-          distributor:         distributor    ?? "",
-          state:               state          ?? "",
-          inverterModel:       inverterModel  ?? "",
+          distributor: distributor ?? "",
+          state: state ?? "",
+          inverterModel: inverterModel ?? "",
           serialNumber,
           error,
-          systemType:          formattedType,
+          systemType: formattedType,
           workflow,
           daysOpen,
           priority,
-          warrantyApprovedAt:  warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
-          warrantyDeniedAt:    warrantyDeniedAt   ? new Date(warrantyDeniedAt)   : null,
+          warrantyApprovedAt: warrantyApprovedAt
+            ? new Date(warrantyApprovedAt)
+            : null,
+          warrantyDeniedAt: warrantyDeniedAt
+            ? new Date(warrantyDeniedAt)
+            : null,
         },
         create: {
-          ticket:              ticketId,
+          ticket: ticketId,
           serialNumber,
-          distributor:         distributor    ?? "",
-          state:               state          ?? "",
-          inverterModel:       inverterModel  ?? "",
+          distributor: distributor ?? "",
+          state: state ?? "",
+          inverterModel: inverterModel ?? "",
           error,
           workflow,
-          systemType:          formattedType,
+          systemType: formattedType,
           daysOpen,
           priority,
-          warrantyApprovedAt:  warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
-          warrantyDeniedAt:    warrantyDeniedAt   ? new Date(warrantyDeniedAt)   : null,
+          warrantyApprovedAt: warrantyApprovedAt
+            ? new Date(warrantyApprovedAt)
+            : null,
+          warrantyDeniedAt: warrantyDeniedAt
+            ? new Date(warrantyDeniedAt)
+            : null,
         },
       });
 
@@ -109,7 +123,6 @@ export async function syncTickets() {
 
   return totalSaved;
 }
-
 
 class Tickets {
   async sync(req: Request, res: Response) {
