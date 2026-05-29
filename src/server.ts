@@ -8,6 +8,5 @@ app.use(express.json());
 app.use(router);
 
 app.listen(process.env.PORT ?? 3000, async () => {
-  console.log(`Server running on PORT ${process.env.PORT ?? 3000}`);
   await startJobs();
 });

@@ -41,8 +41,6 @@ export async function syncTickets() {
       break;
     }
 
-    console.log(`skip=${skip} | retornados: ${tickets.length}`);
-
     for (const ticket of tickets) {
       const serialNumber = getFieldValue(ticket, 92408);
       const ticketId = ticket.id;
@@ -62,7 +60,6 @@ export async function syncTickets() {
       );
 
       if (!serialNumber || serialNumber === "XXXXXXXXXX") {
-        console.log(`Ticket ${ticket.id} sem serial number, pulando...`);
         continue;
       }
 
@@ -112,8 +109,6 @@ export async function syncTickets() {
       totalSaved++;
     }
 
-    console.log(`skip=${skip} | salvos até agora: ${totalSaved}`);
-
     if (tickets.length < PAGE_SIZE) {
       hasMore = false;
     } else {
@@ -130,7 +125,6 @@ class Tickets {
       const totalSaved = await syncTickets();
       return res.json({ message: "Sync concluído", totalSaved });
     } catch (error) {
-      console.error(error);
       return res.status(500).json({
         message: "Erro ao sincronizar tickets",
         error: error instanceof Error ? error.message : String(error),
