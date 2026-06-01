@@ -10,7 +10,8 @@ export async function startJobs() {
 
   await boss.work("sync-tickets", async () => {
     try {
-      await syncTickets();
+   const salve =   await syncTickets();
+      console.log(salve)
     } catch (err) {
       throw err;
     }

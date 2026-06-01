@@ -23,6 +23,7 @@ model Tickets {
   error              String?
   priority           Priority
   workflow           String?
+  openedBy           OpenedBy
   daysOpen           Int        @default(0)
   warrantyApprovedAt DateTime?
   warrantyDeniedAt   DateTime?
@@ -48,4 +49,11 @@ enum Priority {
   CRITICAL
   FINISHED
   ERROR_DATE_NOT_FOUND
+}
+
+enum OpenedBy {
+  EMAIL
+  BOT
+  DISTRIBUTOR
+  AGENT
 }

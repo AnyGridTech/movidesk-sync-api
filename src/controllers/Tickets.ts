@@ -24,7 +24,7 @@ export async function syncTickets() {
     const response = await api.get<MovideskTicket[]>("/tickets", {
       params: {
         token: process.env.MOVIDESK_TOKEN,
-        $select: "id,status,createdDate,customFieldValues",
+        $select: "id,status,createdDate,customFieldValues,origin",
         $expand: "customFieldValues($expand=items)",
         $filter:
           "((category eq 'Garantia') or (category eq 'Fora da Garantia')) and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
@@ -58,6 +58,16 @@ export async function syncTickets() {
         ticket.status,
         warrantyApprovedAt ?? warrantyDeniedAt,
       );
+      const openedBy = () => {
+        if (ticket.origin == 3) {
+          return "EMAIL";
+        } else if (ticket.origin == 9) {
+          return "BOT";
+        } else if (ticket.origin == 1) {
+          return "DISTRIBUTOR";
+        } else ticket.origin == 2;
+        return "AGENT";
+      };
 
       if (!serialNumber || serialNumber === "XXXXXXXXXX") {
         continue;
@@ -88,6 +98,7 @@ export async function syncTickets() {
         },
         create: {
           ticket: ticketId,
+          openedBy: openedBy(),
           serialNumber,
           distributor: distributor ?? "",
           state: state ?? "",
