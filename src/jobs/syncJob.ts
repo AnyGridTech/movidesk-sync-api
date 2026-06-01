@@ -7,7 +7,7 @@ export async function startJobs() {
   await boss.start();
 
   await boss.createQueue("sync-tickets");
-
+console.log("iniciou")
   await boss.work("sync-tickets", async () => {
     try {
    const salve =   await syncTickets();
@@ -17,5 +17,5 @@ export async function startJobs() {
     }
   });
 
-  await boss.schedule("sync-tickets", "*/10 * * * *");
+  await boss.schedule("sync-tickets", "*/30 * * * *");
 }

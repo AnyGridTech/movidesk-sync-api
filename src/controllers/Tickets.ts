@@ -4,7 +4,6 @@ import type { MovideskTicket } from "../types/MovideskTicket.js";
 import { prisma } from "../client/prisma.js";
 import { calcPriority } from "../utils/calcPriority.js";
 import { calcDaysOpen } from "../utils/calcDaysOpen.js";
-import type { SystemType } from "../generated/prisma/enums.js";
 
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
@@ -44,51 +43,19 @@ export async function syncTickets() {
     for (const ticket of tickets) {
       const serialNumber = getFieldValue(ticket, 92408);
       const ticketId = ticket.id;
-      const distributor = getFieldItem(ticket, 92834);
-      const state = getFieldItem(ticket, 92993);
-      const inverterModel = getFieldItem(ticket, 152179);
-      const error = getFieldItem(ticket, 144016);
-      const workflow = getFieldItem(ticket, 215335);
       const warrantyApprovedAt = getFieldValue(ticket, 107733);
       const warrantyDeniedAt = getFieldValue(ticket, 243250);
-      const systemType = getFieldItem(ticket, 144016);
-      const daysOpen = calcDaysOpen(warrantyApprovedAt ?? warrantyDeniedAt);
-      const priority = calcPriority(
-        daysOpen,
-        ticket.status,
-        warrantyApprovedAt ?? warrantyDeniedAt,
-      );
-      const openedBy = () => {
-        if (ticket.origin == 3) {
-          return "EMAIL";
-        } else if (ticket.origin == 9) {
-          return "BOT";
-        } else if (ticket.origin == 1) {
-          return "DISTRIBUTOR";
-        } else ticket.origin == 2;
-        return "AGENT";
-      };
 
       if (!serialNumber || serialNumber === "XXXXXXXXXX") {
         continue;
       }
 
-      const match = systemType?.match(/(?<=\[)[^\]]+(?=\])/g);
-      const rawType = match ? match[0].trim() : "GERAL";
-      const formattedType = rawType.replace(/[- ]/g, "_") as SystemType;
+      console.log("regsitro criado" + ticket.id);
 
-      await prisma.tickets.upsert({
+      await prisma.warrantyTickets.upsert({
         where: { ticket: ticketId },
         update: {
-          distributor: distributor ?? "",
-          state: state ?? "",
-          inverterModel: inverterModel ?? "",
           serialNumber,
-          error,
-          systemType: formattedType,
-          workflow,
-          daysOpen,
-          priority,
           warrantyApprovedAt: warrantyApprovedAt
             ? new Date(warrantyApprovedAt)
             : null,
@@ -98,16 +65,7 @@ export async function syncTickets() {
         },
         create: {
           ticket: ticketId,
-          openedBy: openedBy(),
           serialNumber,
-          distributor: distributor ?? "",
-          state: state ?? "",
-          inverterModel: inverterModel ?? "",
-          error,
-          workflow,
-          systemType: formattedType,
-          daysOpen,
-          priority,
           warrantyApprovedAt: warrantyApprovedAt
             ? new Date(warrantyApprovedAt)
             : null,

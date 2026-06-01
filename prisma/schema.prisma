@@ -12,48 +12,12 @@ datasource db {
   provider = "postgresql"
 }
 
-model Tickets {
+model WarrantyTickets {
   id                 Int        @id @default(autoincrement())
   ticket             Int        @unique
-  distributor        String
-  state              String
-  inverterModel      String
   serialNumber       String
-  systemType         SystemType
-  error              String?
-  priority           Priority
-  workflow           String?
-  openedBy           OpenedBy
-  daysOpen           Int        @default(0)
   warrantyApprovedAt DateTime?
   warrantyDeniedAt   DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
-}
-
-enum SystemType {
-  OFF_GRID      @map("OFF-GRID")
-  ON_GRID       @map("ON-GRID")
-  GERAL         @map("GERAL")
-  SHINE_MASTER  @map("SHINE MASTER")
-  MONITORAMENTO @map("MONITORAMENTO")
-  ZERO_GRID     @map("ZERO-GRID")
-  HIBRIDO       @map("HIBRIDO")
-}
-
-enum Priority {
-  ON_TIME
-  LOW_PRIORITY
-  MODERATE
-  HIGH_PRIORITY
-  CRITICAL
-  FINISHED
-  ERROR_DATE_NOT_FOUND
-}
-
-enum OpenedBy {
-  EMAIL
-  BOT
-  DISTRIBUTOR
-  AGENT
 }
