@@ -2,8 +2,8 @@ import type { Request, Response } from "express";
 import { api } from "../api/MovideskAPI.js";
 import type { MovideskTicket } from "../types/MovideskTicket.js";
 import { prisma } from "../client/prisma.js";
-import { calcPriority } from "../utils/calcPriority.js";
-import { calcDaysOpen } from "../utils/calcDaysOpen.js";
+
+const CHUNK_SIZE = 10;
 
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
@@ -12,6 +12,70 @@ const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
 const getFieldItem = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items?.[0]
     ?.customFieldItem ?? null;
+function buildDateFilter(): string {
+  const year = new Date().getFullYear();
+  return (
+    `((category eq 'Garantia') or (category eq 'Fora da Garantia'))` +
+    ` and createdDate ge ${year}-01-01T00:00:00Z` +
+    ` and createdDate le ${year}-12-31T23:59:59Z`
+  );
+}
+
+async function upsertChunks(tickets: MovideskTicket[]): Promise<number> {
+  const valid = tickets.filter((ticket) => {
+    const serialNumber = getFieldValue(ticket, 92408);
+    return serialNumber && serialNumber !== "XXXXXXXXXX";
+  });
+
+  let saved = 0;
+
+  for (let i = 0; i < valid.length; i += CHUNK_SIZE) {
+    const chunk = valid.slice(i, i + CHUNK_SIZE);
+
+    const results = await Promise.allSettled(
+      chunk.map((ticket) => {
+        const serialNumber = getFieldValue(ticket, 92408)!;
+        const warrantyApprovedAt = getFieldValue(ticket, 107733);
+        const warrantyDeniedAt = getFieldValue(ticket, 243250);
+
+        console.log("registro criado: " + ticket.id);
+
+        return prisma.warrantyTickets.upsert({
+          where: { ticket: ticket.id },
+          update: {
+            serialNumber,
+            warrantyApprovedAt: warrantyApprovedAt
+              ? new Date(warrantyApprovedAt)
+              : null,
+            warrantyDeniedAt: warrantyDeniedAt
+              ? new Date(warrantyDeniedAt)
+              : null,
+          },
+          create: {
+            ticket: ticket.id,
+            serialNumber,
+            warrantyApprovedAt: warrantyApprovedAt
+              ? new Date(warrantyApprovedAt)
+              : null,
+            warrantyDeniedAt: warrantyDeniedAt
+              ? new Date(warrantyDeniedAt)
+              : null,
+          },
+        });
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        saved++;
+      } else {
+        console.error("Falha no upsert:", result.reason);
+      }
+    }
+  }
+
+  return saved;
+}
 
 export async function syncTickets() {
   const PAGE_SIZE = 400;
@@ -25,8 +89,7 @@ export async function syncTickets() {
         token: process.env.MOVIDESK_TOKEN,
         $select: "id,status,createdDate,customFieldValues,origin",
         $expand: "customFieldValues($expand=items)",
-        $filter:
-          "((category eq 'Garantia') or (category eq 'Fora da Garantia')) and createdDate ge 2026-01-01T00:00:00Z and createdDate le 2026-12-31T23:59:59Z",
+        $filter: buildDateFilter(), // FIX 2
         $orderby: "id asc",
         $top: PAGE_SIZE,
         $skip: skip,
@@ -40,43 +103,7 @@ export async function syncTickets() {
       break;
     }
 
-    for (const ticket of tickets) {
-      const serialNumber = getFieldValue(ticket, 92408);
-      const ticketId = ticket.id;
-      const warrantyApprovedAt = getFieldValue(ticket, 107733);
-      const warrantyDeniedAt = getFieldValue(ticket, 243250);
-
-      if (!serialNumber || serialNumber === "XXXXXXXXXX") {
-        continue;
-      }
-
-      console.log("regsitro criado" + ticket.id);
-
-      await prisma.warrantyTickets.upsert({
-        where: { ticket: ticketId },
-        update: {
-          serialNumber,
-          warrantyApprovedAt: warrantyApprovedAt
-            ? new Date(warrantyApprovedAt)
-            : null,
-          warrantyDeniedAt: warrantyDeniedAt
-            ? new Date(warrantyDeniedAt)
-            : null,
-        },
-        create: {
-          ticket: ticketId,
-          serialNumber,
-          warrantyApprovedAt: warrantyApprovedAt
-            ? new Date(warrantyApprovedAt)
-            : null,
-          warrantyDeniedAt: warrantyDeniedAt
-            ? new Date(warrantyDeniedAt)
-            : null,
-        },
-      });
-
-      totalSaved++;
-    }
+    totalSaved += await upsertChunks(tickets); 
 
     if (tickets.length < PAGE_SIZE) {
       hasMore = false;

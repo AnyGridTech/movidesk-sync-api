@@ -6,6 +6,7 @@ import { ticketsRouter } from "./TicketsRouter/TicketsRouter.js"
 const router = Router()
 const tickets = new Tickets()
 
+router.use(authMiddleware)
 router.get("/tickets/sync", (req, res) => tickets.sync(req, res))
-router.use("",authMiddleware,ticketsRouter)
+router.use("",ticketsRouter)
 export default router
