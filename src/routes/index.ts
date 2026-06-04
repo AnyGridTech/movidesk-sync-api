@@ -6,6 +6,10 @@ import { ticketsRouter } from "./TicketsRouter/TicketsRouter.js"
 const router = Router()
 const tickets = new Tickets()
 
+router.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 router.use(authMiddleware)
 router.get("/tickets/sync", (req, res) => tickets.sync(req, res))
 router.use("",ticketsRouter)
