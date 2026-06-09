@@ -38,8 +38,6 @@ async function upsertChunks(tickets: MovideskTicket[]): Promise<number> {
         const warrantyApprovedAt = getFieldValue(ticket, 107733);
         const warrantyDeniedAt = getFieldValue(ticket, 243250);
 
-        console.log("registro criado: " + ticket.id);
-
         return prisma.warrantyTickets.upsert({
           where: { ticket: ticket.id },
           update: {

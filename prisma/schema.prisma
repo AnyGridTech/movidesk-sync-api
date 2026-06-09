@@ -13,39 +13,44 @@ datasource db {
 }
 
 model WarrantyTickets {
-  id                 Int        @id @default(autoincrement())
-  ticket             Int        @unique
+  id                 Int       @id @default(autoincrement())
+  ticket             Int       @unique
   serialNumber       String
   warrantyApprovedAt DateTime?
   warrantyDeniedAt   DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Collaborators {
+  id       String @id @default(uuid())
+  name     String
+  position String
+  email    String @unique
+  passWord String
+  agent String?
+  department     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticketResponses TicketResponse[]
 }
 
 model InverterModel {
-  id       Int          @id @default(autoincrement())
+  id       Int     @id @default(autoincrement())
   model    String  @unique
   line     String?
   type     String
   gridType String?
 }
 
-model Agents {
-  id         String   @id  // ID que vem do Movidesk
-  name       String
-  email      String?
-  syncedAt   DateTime @default(now()) @map("synced_at")
-
-  responses  TicketResponse[]
-
-}
 
 model TicketResponse {
   id          Int      @id @default(autoincrement())
   ticketId    String   @map("ticket_id")
-  agentId     String   @map("agent_id")
+  collaboratorId     String   @map("agent_id")
   respondedAt DateTime @default(now()) @map("responded_at")
 
-  agent       Agents    @relation(fields: [agentId], references: [id])
-
+  collaborator Collaborators @relation(fields: [collaboratorId], references: [id])
 }
