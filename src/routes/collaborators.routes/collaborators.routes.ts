@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { Collaborators } from "../../controllers/Collaborators.js";
+import { CollaboratorsController } from "../../controllers/collaborators.controller.js";
 
 
-const CollaboratorsRouter = new Collaborators()
+const CollaboratorsRouter = new CollaboratorsController()
 const collaboratorstRouter = Router()
 
 collaboratorstRouter.post("/collaborators",CollaboratorsRouter.create)

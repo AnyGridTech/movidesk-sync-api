@@ -113,7 +113,7 @@ export async function syncTickets() {
   return totalSaved;
 }
 
-class Tickets {
+class SyncTicketsController {
   async sync(req: Request, res: Response) {
     try {
       const totalSaved = await syncTickets();
@@ -127,4 +127,4 @@ class Tickets {
   }
 }
 
-export { Tickets };
+export { SyncTicketsController };

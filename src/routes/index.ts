@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { Tickets } from "../controllers/SyncTickets.js";
+import { Tickets } from "../controllers/sync-tickets.controller.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
-import { ticketsRouter } from "./TicketsRouter/TicketsRouter.js";
-import { movideskWebhookRouters } from "./MovideskWebhookRouter/MovideskWebhookRouter.js";
+import { ticketsRouter } from "./tickets.routes/tickets.routes.js";
+import { movideskWebhookRouters } from "./movidesk-webhook.routes/movidesk-webhook.routes.js";
 import { authMiddlewareWebHook } from "../middlewares/authMiddlewareWebHook.js";
-import { collaboratorstRouter } from "./CollaboratorsRouter/CollaboratorsRouter.js";
+import { collaboratorstRouter } from "./collaborators.routes/collaborators.routes.js";
 
 const router = Router();
 const tickets = new Tickets();

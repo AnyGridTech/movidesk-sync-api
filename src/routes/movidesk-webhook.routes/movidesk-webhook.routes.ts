@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { MovideskWebhook } from "../../controllers/MovideskWebhook.js";
+import { MovideskWebhookController } from "../../controllers/movidesk-webhook.controller.js";
 
-const MovideskWebhookRouter = new MovideskWebhook();
+const MovideskWebhookRouter = new MovideskWebhookController();
 const movideskWebhookRouters = Router();
 
 movideskWebhookRouters.post("/webhook",  (req, res) =>

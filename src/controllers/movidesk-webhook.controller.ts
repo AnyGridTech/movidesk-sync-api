@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../client/prisma.js";
 import type { MovideskWebhookPayload } from "../types/MovideskWebhookPayload.js";
 
-class MovideskWebhook {
+class MovideskWebhookController {
   async create(req: Request, res: Response) {
     res.sendStatus(200);
 
@@ -35,4 +35,4 @@ class MovideskWebhook {
   }
 }
 
-export { MovideskWebhook };
+export { MovideskWebhookController };

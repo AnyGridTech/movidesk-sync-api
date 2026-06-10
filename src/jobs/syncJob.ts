@@ -1,5 +1,5 @@
 import { PgBoss } from "pg-boss";
-import { syncTickets } from "../controllers/SyncTickets.js";
+import { syncTickets } from "../controllers/sync-tickets.controller.js";
 
 const boss = new PgBoss(process.env.DATABASE_URL!);
 
