@@ -1,23 +1,24 @@
 import type { Request, Response } from "express";
 import z from "zod";
 import { prisma } from "../client/prisma.js";
-import * as bcrypt from "bcrypt";
+import bcrypt from "bcrypt";
 
 class CollaboratorsController {
   async create(req: Request, res: Response) {
     const bodySchema = z.object({
-      email: z.string().email(),
+      email: z.email(),
       name: z.string(),
-      department: z.string(),
-      position: z.string(),
       passWord: z.string(),
-      agent: z.string().nullable(),
+      role: z.enum(["AGENT", "SUPERVISOR"]).default("AGENT")
     });
 
+    const parsed = bodySchema.safeParse(req.body);
 
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
 
-
-    const { email, name, department, position, passWord, agent } =bodySchema.parse(req.body);
+    const { email, name, passWord,  role } = parsed.data;
 
     const userExists = await prisma.collaborators.findUnique({
       where: { email },
@@ -30,11 +31,9 @@ class CollaboratorsController {
     await prisma.collaborators.create({
       data: {
         name,
-        department,
         email,
         passWord: await bcrypt.hash(passWord, 10),
-        position,
-        agent,
+        role,
       },
     });
 

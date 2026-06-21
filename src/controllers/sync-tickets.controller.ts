@@ -5,14 +5,13 @@ import { prisma } from "../client/prisma.js";
 
 const CHUNK_SIZE = 10;
 
+
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
   null;
 
-const getFieldItem = (ticket: MovideskTicket, fieldId: number) =>
-  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items?.[0]
-    ?.customFieldItem ?? null;
-function buildDateFilter(): string {
+
+function buildWarrantyFilter(): string {
   const year = new Date().getFullYear();
   return (
     `((category eq 'Garantia') or (category eq 'Fora da Garantia'))` +
@@ -21,7 +20,7 @@ function buildDateFilter(): string {
   );
 }
 
-async function upsertChunks(tickets: MovideskTicket[]): Promise<number> {
+async function upsertWarrantyChunks(tickets: MovideskTicket[]): Promise<number> {
   const valid = tickets.filter((ticket) => {
     const serialNumber = getFieldValue(ticket, 92408);
     return serialNumber && serialNumber !== "XXXXXXXXXX";
@@ -37,57 +36,49 @@ async function upsertChunks(tickets: MovideskTicket[]): Promise<number> {
         const serialNumber = getFieldValue(ticket, 92408)!;
         const warrantyApprovedAt = getFieldValue(ticket, 107733);
         const warrantyDeniedAt = getFieldValue(ticket, 243250);
+        const category = ticket.category ?? null;
 
         return prisma.warrantyTickets.upsert({
           where: { ticket: ticket.id },
           update: {
             serialNumber,
-            warrantyApprovedAt: warrantyApprovedAt
-              ? new Date(warrantyApprovedAt)
-              : null,
-            warrantyDeniedAt: warrantyDeniedAt
-              ? new Date(warrantyDeniedAt)
-              : null,
+            category,
+            warrantyApprovedAt: warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
+            warrantyDeniedAt: warrantyDeniedAt ? new Date(warrantyDeniedAt) : null,
           },
           create: {
             ticket: ticket.id,
             serialNumber,
-            warrantyApprovedAt: warrantyApprovedAt
-              ? new Date(warrantyApprovedAt)
-              : null,
-            warrantyDeniedAt: warrantyDeniedAt
-              ? new Date(warrantyDeniedAt)
-              : null,
+            category,
+            warrantyApprovedAt: warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
+            warrantyDeniedAt: warrantyDeniedAt ? new Date(warrantyDeniedAt) : null,
           },
         });
       })
     );
 
     for (const result of results) {
-      if (result.status === "fulfilled") {
-        saved++;
-      } else {
-        console.error("Falha no upsert:", result.reason);
-      }
+      if (result.status === "fulfilled") saved++;
+      else console.error("Falha no upsert de garantia:", result.reason);
     }
   }
 
   return saved;
 }
 
-export async function syncTickets() {
+async function syncWarranties(): Promise<number> {
   const PAGE_SIZE = 400;
   let skip = 0;
-  let totalSaved = 0;
+  let total = 0;
   let hasMore = true;
 
   while (hasMore) {
     const response = await api.get<MovideskTicket[]>("/tickets", {
       params: {
         token: process.env.MOVIDESK_TOKEN,
-        $select: "id,status,createdDate,customFieldValues,origin",
+        $select: "id,status,createdDate,category,customFieldValues,origin",
         $expand: "customFieldValues($expand=items)",
-        $filter: buildDateFilter(), // FIX 2
+        $filter: buildWarrantyFilter(),
         $orderby: "id asc",
         $top: PAGE_SIZE,
         $skip: skip,
@@ -96,35 +87,123 @@ export async function syncTickets() {
 
     const tickets: MovideskTicket[] = response.data;
 
-    if (!Array.isArray(tickets) || tickets.length === 0) {
-      hasMore = false;
-      break;
-    }
+    if (!Array.isArray(tickets) || tickets.length === 0) break;
 
-    totalSaved += await upsertChunks(tickets); 
+    total += await upsertWarrantyChunks(tickets);
 
-    if (tickets.length < PAGE_SIZE) {
-      hasMore = false;
-    } else {
-      skip += PAGE_SIZE;
+    if (tickets.length < PAGE_SIZE) hasMore = false;
+    else skip += PAGE_SIZE;
+  }
+
+  return total;
+}
+
+
+function buildTicketFilter(): string {
+  return (
+    `justification eq 'Aguardando Retorno da Growatt' and ownerTeam eq 'Equipe Inversor'`
+  );
+}
+
+async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
+  let processed = 0;
+
+  for (let i = 0; i < tickets.length; i += CHUNK_SIZE) {
+    const chunk = tickets.slice(i, i + CHUNK_SIZE);
+
+    const results = await Promise.allSettled(
+      chunk.map((ticket) =>
+        prisma.ticketResponse.upsert({
+          where: { ticketId: String(ticket.id) },
+          update: {
+            title: ticket.subject ?? null,
+            category: ticket.category ?? null,
+            status: "WAITING",
+            openedAt: new Date(ticket.createdDate),
+          },
+          create: {
+            ticketId: String(ticket.id),
+            title: ticket.subject ?? null,
+            category: ticket.category ?? null,
+            status: "WAITING",
+            openedAt: new Date(ticket.createdDate),
+          },
+        })
+      )
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") processed++;
+      else console.error("Falha no upsert de ticket:", result.reason);
     }
   }
 
-  return totalSaved;
+  return processed;
+}
+
+async function syncTicketResponses(): Promise<number> {
+  const PAGE_SIZE = 400;
+  let skip = 0;
+  let total = 0;
+  let hasMore = true;
+  const idsAtuais = new Set<string>();
+
+  while (hasMore) {
+    const response = await api.get<MovideskTicket[]>("/tickets", {
+      params: {
+        token: process.env.MOVIDESK_TOKEN,
+        $select: "id,subject,status,justification,category,createdDate",
+        $filter: buildTicketFilter(),
+        $orderby: "id asc",
+        $top: PAGE_SIZE,
+        $skip: skip,
+      },
+    });
+
+    const tickets: MovideskTicket[] = response.data;
+
+    if (!Array.isArray(tickets) || tickets.length === 0) break;
+
+    for (const ticket of tickets) {
+      idsAtuais.add(String(ticket.id));
+    }
+
+    total += await upsertTicketChunks(tickets);
+
+    if (tickets.length < PAGE_SIZE) hasMore = false;
+    else skip += PAGE_SIZE;
+  }
+
+  // remove do banco quem não está mais "aguardando Growatt"
+  await prisma.ticketResponse.deleteMany({
+    where: {
+      ticketId: { notIn: Array.from(idsAtuais) },
+    },
+  });
+
+  return total;
 }
 
 class SyncTicketsController {
   async sync(req: Request, res: Response) {
     try {
-      const totalSaved = await syncTickets();
-      return res.json({ message: "Sync concluído", totalSaved });
+      // roda os dois em paralelo
+      const [warranties, ticketResponses] = await Promise.all([
+        syncWarranties(),
+        syncTicketResponses(),
+      ]);
+
+      return res.json({
+        message: "Sync concluído",
+        warranties,
+        ticketResponses,
+      });
     } catch (error) {
       return res.status(500).json({
-        message: "Erro ao sincronizar tickets",
+        message: "Erro ao sincronizar",
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 }
-
-export { SyncTicketsController };
+export { SyncTicketsController, syncWarranties, syncTicketResponses };

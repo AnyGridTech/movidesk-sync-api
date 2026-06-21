@@ -1,21 +1,23 @@
 import { Router } from "express";
-import { Tickets } from "../controllers/sync-tickets.controller.js";
-import { authMiddleware } from "../middlewares/authMiddleware.js";
+import { SyncTicketsController } from "../controllers/sync-tickets.controller.js";
+
 import { ticketsRouter } from "./tickets.routes/tickets.routes.js";
-import { movideskWebhookRouters } from "./movidesk-webhook.routes/movidesk-webhook.routes.js";
-import { authMiddlewareWebHook } from "../middlewares/authMiddlewareWebHook.js";
+
 import { collaboratorstRouter } from "./collaborators.routes/collaborators.routes.js";
+import { authenticationHandling } from "../middlewares/authenticationHandling.js";
+import { loginRouter } from "./Login/login.route.js";
 
 const router = Router();
-const tickets = new Tickets();
+const tickets = new SyncTicketsController();
 
 router.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+
+router.use("",loginRouter)
+router.use(authenticationHandling)
 router.use("", collaboratorstRouter)
-router.use("", authMiddlewareWebHook, movideskWebhookRouters);
-router.use(authMiddleware);
 router.use("", ticketsRouter);
 
 router.get("/tickets/sync", (req, res) => tickets.sync(req, res));
