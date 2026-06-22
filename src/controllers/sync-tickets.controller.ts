@@ -5,11 +5,22 @@ import { prisma } from "../client/prisma.js";
 
 const CHUNK_SIZE = 10;
 
+function ticketBy(origin: number) {
+  switch (origin) {
+    case 1:
+      return "EMAIL";
+    case 9:
+      return "BOT";
+    case 2:
+      return "DISTRIBUTOR";
+    default:
+      return "AGENT";
+  }
+}
 
 const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
   null;
-
 
 function buildWarrantyFilter(): string {
   const year = new Date().getFullYear();
@@ -20,7 +31,9 @@ function buildWarrantyFilter(): string {
   );
 }
 
-async function upsertWarrantyChunks(tickets: MovideskTicket[]): Promise<number> {
+async function upsertWarrantyChunks(
+  tickets: MovideskTicket[],
+): Promise<number> {
   const valid = tickets.filter((ticket) => {
     const serialNumber = getFieldValue(ticket, 92408);
     return serialNumber && serialNumber !== "XXXXXXXXXX";
@@ -43,18 +56,28 @@ async function upsertWarrantyChunks(tickets: MovideskTicket[]): Promise<number> 
           update: {
             serialNumber,
             category,
-            warrantyApprovedAt: warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
-            warrantyDeniedAt: warrantyDeniedAt ? new Date(warrantyDeniedAt) : null,
+            team: ticket.ownerTeam,
+            warrantyApprovedAt: warrantyApprovedAt
+              ? new Date(warrantyApprovedAt)
+              : null,
+            warrantyDeniedAt: warrantyDeniedAt
+              ? new Date(warrantyDeniedAt)
+              : null,
           },
           create: {
             ticket: ticket.id,
             serialNumber,
             category,
-            warrantyApprovedAt: warrantyApprovedAt ? new Date(warrantyApprovedAt) : null,
-            warrantyDeniedAt: warrantyDeniedAt ? new Date(warrantyDeniedAt) : null,
+            team: ticket.ownerTeam,
+            warrantyApprovedAt: warrantyApprovedAt
+              ? new Date(warrantyApprovedAt)
+              : null,
+            warrantyDeniedAt: warrantyDeniedAt
+              ? new Date(warrantyDeniedAt)
+              : null,
           },
         });
-      })
+      }),
     );
 
     for (const result of results) {
@@ -98,11 +121,8 @@ async function syncWarranties(): Promise<number> {
   return total;
 }
 
-
 function buildTicketFilter(): string {
-  return (
-    `justification eq 'Aguardando Retorno da Growatt' and ownerTeam eq 'Equipe Inversor'`
-  );
+  return `justification eq 'Aguardando Retorno da Growatt' and ownerTeam eq 'Equipe Inversor' and ownerTeam eq 'Equipe Monitoramento'`;
 }
 
 async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
@@ -118,18 +138,21 @@ async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
           update: {
             title: ticket.subject ?? null,
             category: ticket.category ?? null,
-            status: "WAITING",
+            status: ticket.status,
+            team: ticket.ownerTeam,
             openedAt: new Date(ticket.createdDate),
           },
           create: {
             ticketId: String(ticket.id),
             title: ticket.subject ?? null,
             category: ticket.category ?? null,
-            status: "WAITING",
+            status: ticket.status,
+            team: ticket.ownerTeam,
+            channel: ticketBy(ticket.origin),
             openedAt: new Date(ticket.createdDate),
           },
-        })
-      )
+        }),
+      ),
     );
 
     for (const result of results) {

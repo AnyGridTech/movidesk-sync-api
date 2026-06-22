@@ -14,11 +14,11 @@ router.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+router.use("", ticketsRouter);
 
 router.use("",loginRouter)
 router.use(authenticationHandling)
 router.use("", collaboratorstRouter)
-router.use("", ticketsRouter);
 
 router.get("/tickets/sync", (req, res) => tickets.sync(req, res));
 export default router;
