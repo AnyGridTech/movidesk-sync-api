@@ -22,6 +22,10 @@ const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.value ??
   null;
 
+const getFieldValueItem = (ticket: MovideskTicket, fieldId: number) =>
+  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items[0]
+    ?.customFieldItem ?? null;
+
 function buildWarrantyFilter(): string {
   const year = new Date().getFullYear();
   return (
@@ -50,12 +54,16 @@ async function upsertWarrantyChunks(
         const warrantyApprovedAt = getFieldValue(ticket, 107733);
         const warrantyDeniedAt = getFieldValue(ticket, 243250);
         const category = ticket.category ?? null;
+        const approvalIssueReason = getFieldValueItem(ticket, 224262);
+        const isRecurrentInAnalysis = getFieldValueItem(ticket, 216435);
 
         return prisma.warrantyTickets.upsert({
           where: { ticket: ticket.id },
           update: {
             serialNumber,
             category,
+            approvalIssueReason,
+            isRecurrentInAnalysis,
             team: ticket.ownerTeam,
             warrantyApprovedAt: warrantyApprovedAt
               ? new Date(warrantyApprovedAt)
@@ -67,6 +75,8 @@ async function upsertWarrantyChunks(
           create: {
             ticket: ticket.id,
             serialNumber,
+            approvalIssueReason,
+            isRecurrentInAnalysis,
             category,
             team: ticket.ownerTeam,
             warrantyApprovedAt: warrantyApprovedAt
@@ -122,7 +132,18 @@ async function syncWarranties(): Promise<number> {
 }
 
 function buildTicketFilter(): string {
-  return `justification eq 'Aguardando Retorno da Growatt' and ownerTeam eq 'Equipe Inversor' and ownerTeam eq 'Equipe Monitoramento'`;
+  return (
+    `(` +
+    `(` +
+    `justification eq 'Aguardando Retorno da Growatt'` +
+    ` and (ownerTeam eq 'Equipe Inversor' or ownerTeam eq 'Equipe Monitoramento')` +
+    `)` +
+    ` or (` +
+    `justification eq 'Aguardando Retorno da Growatt'` +
+    ` and serviceFirstLevel eq '2.1 - E-mail'` +
+    `)` +
+    `)`
+  );
 }
 
 async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
