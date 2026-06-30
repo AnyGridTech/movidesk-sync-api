@@ -44,7 +44,7 @@ class AuthController {
     };
 
     const token = jwt.sign(payload, process.env.API_GROWATT_TOKEN, {
-      expiresIn: "1m",
+      expiresIn: "1d",
     });
 
     const { passWord: _, ...colaboradorSemSenha } = colaborador;

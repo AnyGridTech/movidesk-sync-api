@@ -17,5 +17,5 @@ export async function startJobs() {
     console.log(`Sync concluído — garantias: ${warranties} | tickets: ${ticketResponses}`);
   });
 
-  await boss.schedule("sync-tickets", "* * * * *");
+  await boss.schedule("sync-tickets", "*/30 * * * *");
 }

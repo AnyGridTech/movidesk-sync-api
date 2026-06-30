@@ -92,7 +92,6 @@ async function upsertWarrantyChunks(
 
     for (const result of results) {
       if (result.status === "fulfilled") saved++;
-      else console.error("Falha no upsert de garantia:", result.reason);
     }
   }
 
@@ -142,9 +141,210 @@ function buildTicketFilter(): string {
     `justification eq 'Aguardando Retorno da Growatt'` +
     ` and serviceFirstLevel eq '2.1 - E-mail'` +
     `)` +
-    `)`
+    `  or status eq 'Novo'  )`
   );
 }
+
+// ============================================================
+// FUNÇÕES DE REGRAS DE NEGÓCIO
+// ============================================================
+
+/**
+ * Verifica se a última ação do ticket foi criada por um cliente.
+ * Critério exclusivo: createdBy.profileType === 2.
+ * Não usa origin como fallback para evitar falsos positivos com ações de agentes.
+ */
+function wasLastActionFromCustomer(ticket: MovideskTicket): boolean {
+  if (!ticket.actions || ticket.actions.length === 0) {
+    return false;
+  }
+  const lastAction = ticket.actions[ticket.actions.length - 1];
+  return lastAction?.createdBy?.profileType === 2;
+}
+
+/**
+ * Verifica se a última ação do ticket ocorreu nos últimos 7 dias.
+ */
+function wasLastActionWithin7Days(ticket: MovideskTicket): boolean {
+  if (!ticket.actions || ticket.actions.length === 0) {
+    return false;
+  }
+  const lastAction = ticket.actions[ticket.actions.length - 1];
+  const lastActionDate = new Date(lastAction!.createdDate);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  return lastActionDate >= sevenDaysAgo;
+}
+
+/**
+ * Verifica se o ticket possui responsável atribuído.
+ * Considera apenas a presença de owner.id no campo direto ou no último ownerHistory.
+ * A heurística por ownerTeam foi removida pois causava falsos positivos em tickets
+ * de e-mail que não têm responsável real atribuído.
+ */
+function ticketHasOwner(ticket: MovideskTicket): boolean {
+  // 1. Owner direto com ID preenchido
+  if (ticket.owner && typeof ticket.owner === "object" && ticket.owner.id) {
+    return true;
+  }
+
+  // 2. Último histórico com owner e ID preenchido
+  if (ticket.ownerHistories && ticket.ownerHistories.length > 0) {
+    const lastHistory =
+      ticket.ownerHistories[ticket.ownerHistories.length - 1];
+    if (
+      lastHistory?.owner &&
+      typeof lastHistory?.owner === "object" &&
+      lastHistory.owner.id
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getOwnerTeam(ticket: MovideskTicket): string | null {
+  if (ticket.ownerTeam) {
+    return ticket.ownerTeam;
+  }
+  if (ticket.serviceFirstLevel === "2.1 - E-mail" || ticket.status === "Novo") {
+    return "Email";
+  }
+  return null;
+}
+
+function getTicketCategory(ticket: MovideskTicket): string {
+  if (
+    ticket.category === "Garantia" ||
+    ticket.category === "Fora da Garantia"
+  ) {
+    return "GARANTIA";
+  }
+
+  const isInversor =
+    ticket.ownerTeam === "Equipe Inversor" &&
+    ticket.justification === "Aguardando Retorno da Growatt";
+  const isMonitoramento =
+    ticket.ownerTeam === "Equipe Monitoramento" &&
+    ticket.justification === "Aguardando Retorno da Growatt";
+  const isEmail =
+    ticket.justification === "Aguardando Retorno da Growatt" &&
+    ticket.serviceFirstLevel === "2.1 - E-mail";
+  const isNew = ticket.status === "Novo";
+
+  if (isInversor) return "INVERSOR";
+  if (isMonitoramento) return "MONITORAMENTO";
+  if (isEmail) return "EMAIL";
+  if (isNew) return "NOVO";
+  return "OUTRO";
+}
+
+function shouldIncludeTicket(ticket: MovideskTicket): {
+  include: boolean;
+  category: string;
+  reason?: string;
+} {
+  // Ignorar garantia
+  if (
+    ticket.category === "Garantia" ||
+    ticket.category === "Fora da Garantia"
+  ) {
+    return {
+      include: false,
+      category: "GARANTIA",
+      reason: "Ticket de garantia - ignorado",
+    };
+  }
+
+  const isInversor =
+    ticket.ownerTeam === "Equipe Inversor" &&
+    ticket.justification === "Aguardando Retorno da Growatt";
+  const isMonitoramento =
+    ticket.ownerTeam === "Equipe Monitoramento" &&
+    ticket.justification === "Aguardando Retorno da Growatt";
+
+  if (isInversor) {
+    return { include: true, category: "INVERSOR" };
+  }
+  if (isMonitoramento) {
+    return { include: true, category: "MONITORAMENTO" };
+  }
+
+  const isEmail =
+    ticket.justification === "Aguardando Retorno da Growatt" &&
+    ticket.serviceFirstLevel === "2.1 - E-mail";
+  const isNew = ticket.status === "Novo";
+
+  // 2. EMAIL: aplica regras
+  if (isEmail) {
+    const isFromCustomer = wasLastActionFromCustomer(ticket);
+    const hasNoOwner = !ticketHasOwner(ticket);
+    const isWithin7Days = wasLastActionWithin7Days(ticket);
+
+    if (!isFromCustomer) {
+      return {
+        include: false,
+        category: "EMAIL",
+        reason: "Última ação não é do cliente",
+      };
+    }
+    if (!hasNoOwner) {
+      return {
+        include: false,
+        category: "EMAIL",
+        reason: "Ticket tem responsável atribuído",
+      };
+    }
+    if (!isWithin7Days) {
+      return {
+        include: false,
+        category: "EMAIL",
+        reason: "Última ação tem mais de 7 dias",
+      };
+    }
+    return { include: true, category: "EMAIL" };
+  }
+
+  if (isNew) {
+    const isFromCustomer = wasLastActionFromCustomer(ticket);
+    const hasNoOwner = !ticketHasOwner(ticket);
+    const isWithin7Days = wasLastActionWithin7Days(ticket);
+
+    if (!isFromCustomer) {
+      return {
+        include: false,
+        category: "NOVO",
+        reason: "Última ação não é do cliente",
+      };
+    }
+    if (!hasNoOwner) {
+      return {
+        include: false,
+        category: "NOVO",
+        reason: "Ticket tem responsável atribuído",
+      };
+    }
+    if (!isWithin7Days) {
+      return {
+        include: false,
+        category: "NOVO",
+        reason: "Última ação tem mais de 7 dias",
+      };
+    }
+    return { include: true, category: "NOVO" };
+  }
+
+  return {
+    include: false,
+    category: "OUTRO",
+    reason: "Não atende a nenhuma categoria",
+  };
+}
+
+// ============================================================
+// FUNÇÕES DE BANCO E SINCRONIZAÇÃO
+// ============================================================
 
 async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
   let processed = 0;
@@ -153,14 +353,16 @@ async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
     const chunk = tickets.slice(i, i + CHUNK_SIZE);
 
     const results = await Promise.allSettled(
-      chunk.map((ticket) =>
-        prisma.ticketResponse.upsert({
+      chunk.map((ticket) => {
+        const team = getOwnerTeam(ticket);
+
+        return prisma.ticketResponse.upsert({
           where: { ticketId: String(ticket.id) },
           update: {
             title: ticket.subject ?? null,
             category: ticket.category ?? null,
             status: ticket.status,
-            team: ticket.ownerTeam,
+            team: team,
             openedAt: new Date(ticket.createdDate),
           },
           create: {
@@ -168,35 +370,56 @@ async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
             title: ticket.subject ?? null,
             category: ticket.category ?? null,
             status: ticket.status,
-            team: ticket.ownerTeam,
+            team: team,
             channel: ticketBy(ticket.origin),
             openedAt: new Date(ticket.createdDate),
           },
-        }),
-      ),
+        });
+      }),
     );
 
     for (const result of results) {
       if (result.status === "fulfilled") processed++;
-      else console.error("Falha no upsert de ticket:", result.reason);
     }
   }
 
   return processed;
 }
 
-async function syncTicketResponses(): Promise<number> {
+async function syncTicketResponses(): Promise<{ total: number; stats: any }> {
   const PAGE_SIZE = 400;
   let skip = 0;
-  let total = 0;
+  let totalProcessed = 0;
   let hasMore = true;
   const idsAtuais = new Set<string>();
+
+  const stats = {
+    total: {
+      inversor: 0,
+      monitoramento: 0,
+      email: 0,
+      novo: 0,
+      garantia: 0,
+      outro: 0,
+    },
+    salvos: { inversor: 0, monitoramento: 0, email: 0, novo: 0 },
+    filtrados: {
+      inversor: { total: 0, salvos: 0 },
+      monitoramento: { total: 0, salvos: 0 },
+      email: { total: 0, salvos: 0, falhouCliente: 0, falhouOwner: 0, falhou7Dias: 0 },
+      novo: { total: 0, salvos: 0, falhouCliente: 0, falhouOwner: 0, falhou7Dias: 0 },
+      garantia: { total: 0 },
+      outro: { total: 0 },
+    },
+  };
 
   while (hasMore) {
     const response = await api.get<MovideskTicket[]>("/tickets", {
       params: {
         token: process.env.MOVIDESK_TOKEN,
-        $select: "id,subject,status,justification,category,createdDate",
+        $select:
+          "id,subject,status,justification,category,createdDate,origin,ownerTeam,owner,actions,serviceFirstLevel,ownerHistories,createdBy",
+        $expand: "actions($expand=createdBy),ownerHistories($expand=owner),owner",
         $filter: buildTicketFilter(),
         $orderby: "id asc",
         $top: PAGE_SIZE,
@@ -208,41 +431,110 @@ async function syncTicketResponses(): Promise<number> {
 
     if (!Array.isArray(tickets) || tickets.length === 0) break;
 
+    // Contagem total por categoria
     for (const ticket of tickets) {
+      const category = getTicketCategory(ticket);
+      if (category === "INVERSOR") stats.total.inversor++;
+      else if (category === "MONITORAMENTO") stats.total.monitoramento++;
+      else if (category === "EMAIL") stats.total.email++;
+      else if (category === "NOVO") stats.total.novo++;
+      else if (category === "GARANTIA") stats.total.garantia++;
+      else stats.total.outro++;
+    }
+
+    // Aplica filtros
+    const results = tickets.map((ticket) => {
+      const result = shouldIncludeTicket(ticket);
+
+      if (result.category === "INVERSOR") stats.filtrados.inversor.total++;
+      else if (result.category === "MONITORAMENTO") stats.filtrados.monitoramento.total++;
+      else if (result.category === "EMAIL") stats.filtrados.email.total++;
+      else if (result.category === "NOVO") stats.filtrados.novo.total++;
+      else if (result.category === "GARANTIA") stats.filtrados.garantia.total++;
+      else if (result.category === "OUTRO") stats.filtrados.outro.total++;
+
+      if (
+        !result.include &&
+        (result.category === "EMAIL" || result.category === "NOVO")
+      ) {
+        const target =
+          result.category === "EMAIL"
+            ? stats.filtrados.email
+            : stats.filtrados.novo;
+        if (result.reason?.includes("cliente")) target.falhouCliente++;
+        else if (result.reason?.includes("responsável")) target.falhouOwner++;
+        else if (result.reason?.includes("7 dias")) target.falhou7Dias++;
+      }
+
+      return { ticket, ...result };
+    });
+
+    const filteredTickets = results.filter((r) => r.include).map((r) => r.ticket);
+
+    // Conta salvos por categoria
+    for (const ticket of filteredTickets) {
+      const category = getTicketCategory(ticket);
+      if (category === "INVERSOR") stats.salvos.inversor++;
+      else if (category === "MONITORAMENTO") stats.salvos.monitoramento++;
+      else if (category === "EMAIL") stats.salvos.email++;
+      else if (category === "NOVO") stats.salvos.novo++;
+    }
+
+    for (const ticket of filteredTickets) {
       idsAtuais.add(String(ticket.id));
     }
 
-    total += await upsertTicketChunks(tickets);
+    totalProcessed += await upsertTicketChunks(filteredTickets);
 
     if (tickets.length < PAGE_SIZE) hasMore = false;
     else skip += PAGE_SIZE;
   }
 
-  // remove do banco quem não está mais "aguardando Growatt"
+  // Remove tickets que não estão mais no filtro
   await prisma.ticketResponse.deleteMany({
     where: {
       ticketId: { notIn: Array.from(idsAtuais) },
     },
   });
 
-  return total;
+  return { total: totalProcessed, stats };
 }
 
 class SyncTicketsController {
   async sync(req: Request, res: Response) {
     try {
-      // roda os dois em paralelo
-      const [warranties, ticketResponses] = await Promise.all([
+      const startTime = Date.now();
+
+      const [warranties, ticketResult] = await Promise.all([
         syncWarranties(),
         syncTicketResponses(),
       ]);
 
+      const { total, stats } = ticketResult;
+
+      const totalSalvoGeral =
+        stats.salvos.inversor +
+        stats.salvos.monitoramento +
+        stats.salvos.email +
+        stats.salvos.novo;
+
+      console.log(
+        `[Sync] ticketResponse: ${totalSalvoGeral} salvos | warrantyTickets: ${warranties} salvos (${(Date.now() - startTime) / 1000}s)`
+      );
+
       return res.json({
         message: "Sync concluído",
         warranties,
-        ticketResponses,
+        tickets: total,
+        stats: {
+          total: stats.total,
+          salvos: stats.salvos,
+          filtrados: stats.filtrados,
+          tempo_execucao: `${(Date.now() - startTime) / 1000}s`,
+        },
       });
     } catch (error) {
+      console.error("Erro na sincronização:", error);
       return res.status(500).json({
         message: "Erro ao sincronizar",
         error: error instanceof Error ? error.message : String(error),
@@ -250,4 +542,5 @@ class SyncTicketsController {
     }
   }
 }
+
 export { SyncTicketsController, syncWarranties, syncTicketResponses };
