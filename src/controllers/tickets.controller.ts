@@ -1,11 +1,34 @@
 import type { Request, Response } from "express";
 import { prisma } from "../client/prisma.js";
 
-class TicketsController {
-  // ============================================================
-  // GARANTIAS
-  // ============================================================
 
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+function getPagination(req: Request) {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, Number(req.query.pageSize) || DEFAULT_PAGE_SIZE)
+  );
+  const skip = (page - 1) * pageSize;
+
+  return { page, pageSize, skip };
+}
+
+function buildPaginationMeta(total: number, page: number, pageSize: number) {
+  return {
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize) || 1,
+    hasNextPage: page * pageSize < total,
+    hasPrevPage: page > 1,
+  };
+}
+
+class TicketsController {
+ 
   async approved(req: Request, res: Response) {
     try {
       const { startDate, endDate } = req.query;
@@ -19,19 +42,29 @@ class TicketsController {
       const start = new Date(`${startDate}T00:00:00.000`);
       const end = new Date(`${endDate}T23:59:59.999`);
 
-      const tickets = await prisma.warrantyTickets.findMany({
-        where: {
-          warrantyApprovedAt: {
-            gte: start,
-            lte: end,
-          },
-        },
-        orderBy: {
-          warrantyApprovedAt: "desc",
-        },
-      });
+      const { page, pageSize, skip } = getPagination(req);
 
-      return res.json(tickets);
+      const where = {
+        warrantyApprovedAt: {
+          gte: start,
+          lte: end,
+        },
+      };
+
+      const [tickets, total] = await Promise.all([
+        prisma.warrantyTickets.findMany({
+          where,
+          orderBy: { warrantyApprovedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.warrantyTickets.count({ where }),
+      ]);
+
+      return res.json({
+        ...buildPaginationMeta(total, page, pageSize),
+        tickets,
+      });
     } catch (error) {
       console.error(error);
       return res.status(500).json({
@@ -53,19 +86,29 @@ class TicketsController {
       const start = new Date(`${startDate}T00:00:00.000`);
       const end = new Date(`${endDate}T23:59:59.999`);
 
-      const tickets = await prisma.warrantyTickets.findMany({
-        where: {
-          warrantyDeniedAt: {
-            gte: start,
-            lte: end,
-          },
-        },
-        orderBy: {
-          warrantyDeniedAt: "desc",
-        },
-      });
+      const { page, pageSize, skip } = getPagination(req);
 
-      return res.json(tickets);
+      const where = {
+        warrantyDeniedAt: {
+          gte: start,
+          lte: end,
+        },
+      };
+
+      const [tickets, total] = await Promise.all([
+        prisma.warrantyTickets.findMany({
+          where,
+          orderBy: { warrantyDeniedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.warrantyTickets.count({ where }),
+      ]);
+
+      return res.json({
+        ...buildPaginationMeta(total, page, pageSize),
+        tickets,
+      });
     } catch (error) {
       console.error(error);
       return res.status(500).json({
@@ -74,22 +117,22 @@ class TicketsController {
     }
   }
 
-  // ============================================================
-  // TICKETS DE RESPOSTA — POR TIME
-  // ============================================================
 
-  /**
-   * GET /tickets/responses
-   * Retorna todos os tickets de resposta salvos no banco.
-   */
   async allResponses(req: Request, res: Response) {
     try {
-      const tickets = await prisma.ticketResponse.findMany({
-        orderBy: { openedAt: "desc" },
-      });
+      const { page, pageSize, skip } = getPagination(req);
+
+      const [tickets, total] = await Promise.all([
+        prisma.ticketResponse.findMany({
+          orderBy: { openedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.ticketResponse.count(),
+      ]);
 
       return res.json({
-        total: tickets.length,
+        ...buildPaginationMeta(total, page, pageSize),
         tickets,
       });
     } catch (error) {
@@ -100,20 +143,10 @@ class TicketsController {
     }
   }
 
-  /**
-   * GET /tickets/responses/by-team
-   * Retorna os tickets agrupados por time:
-   *   - email       → team = 'Email'
-   *   - inversor    → team = 'Equipe Inversor'
-   *   - monitoramento → team = 'Equipe Monitoramento'
-   *
-   * Query params opcionais:
-   *   - startDate (YYYY-MM-DD)
-   *   - endDate   (YYYY-MM-DD)
-   */
   async responsesByTeam(req: Request, res: Response) {
     try {
       const { startDate, endDate } = req.query;
+      const { page, pageSize, skip } = getPagination(req);
 
       const dateFilter =
         startDate && endDate
@@ -125,31 +158,64 @@ class TicketsController {
             }
           : {};
 
-      const [email, inversor, monitoramento] = await Promise.all([
-        prisma.ticketResponse.findMany({
-          where: { team: "Email", ...dateFilter },
-          orderBy: { openedAt: "desc" },
-        }),
-        prisma.ticketResponse.findMany({
-          where: { team: "Equipe Inversor", ...dateFilter },
-          orderBy: { openedAt: "desc" },
-        }),
-        prisma.ticketResponse.findMany({
-          where: { team: "Equipe Monitoramento", ...dateFilter },
-          orderBy: { openedAt: "desc" },
-        }),
-      ]);
+      const whereEmail = { team: "Email", ...dateFilter };
+      const whereInversor = { team: "Equipe Inversor", ...dateFilter };
+      const whereMonitoramento = { team: "Equipe Monitoramento", ...dateFilter };
 
-      return res.json({
-        totais: {
-          email: email.length,
-          inversor: inversor.length,
-          monitoramento: monitoramento.length,
-          geral: email.length + inversor.length + monitoramento.length,
-        },
+      const [
         email,
         inversor,
         monitoramento,
+        totalEmail,
+        totalInversor,
+        totalMonitoramento,
+      ] = await Promise.all([
+        prisma.ticketResponse.findMany({
+          where: whereEmail,
+          orderBy: { openedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.ticketResponse.findMany({
+          where: whereInversor,
+          orderBy: { openedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.ticketResponse.findMany({
+          where: whereMonitoramento,
+          orderBy: { openedAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.ticketResponse.count({ where: whereEmail }),
+        prisma.ticketResponse.count({ where: whereInversor }),
+        prisma.ticketResponse.count({ where: whereMonitoramento }),
+      ]);
+
+      const totalGeral = totalEmail + totalInversor + totalMonitoramento;
+
+      return res.json({
+        page,
+        pageSize,
+        totais: {
+          email: totalEmail,
+          inversor: totalInversor,
+          monitoramento: totalMonitoramento,
+          geral: totalGeral,
+        },
+        email: {
+          ...buildPaginationMeta(totalEmail, page, pageSize),
+          tickets: email,
+        },
+        inversor: {
+          ...buildPaginationMeta(totalInversor, page, pageSize),
+          tickets: inversor,
+        },
+        monitoramento: {
+          ...buildPaginationMeta(totalMonitoramento, page, pageSize),
+          tickets: monitoramento,
+        },
       });
     } catch (error) {
       console.error(error);

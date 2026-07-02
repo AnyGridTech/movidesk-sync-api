@@ -145,9 +145,7 @@ function buildTicketFilter(): string {
   );
 }
 
-// ============================================================
 // FUNÇÕES DE REGRAS DE NEGÓCIO
-// ============================================================
 
 /**
  * Verifica se a última ação do ticket foi criada por um cliente.
@@ -342,9 +340,7 @@ function shouldIncludeTicket(ticket: MovideskTicket): {
   };
 }
 
-// ============================================================
 // FUNÇÕES DE BANCO E SINCRONIZAÇÃO
-// ============================================================
 
 async function upsertTicketChunks(tickets: MovideskTicket[]): Promise<number> {
   let processed = 0;
