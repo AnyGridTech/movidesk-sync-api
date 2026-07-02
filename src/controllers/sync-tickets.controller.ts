@@ -23,7 +23,7 @@ const getFieldValue = (ticket: MovideskTicket, fieldId: number) =>
   null;
 
 const getFieldValueItem = (ticket: MovideskTicket, fieldId: number) =>
-  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items[0]
+  ticket.customFieldValues?.find((f) => f.customFieldId === fieldId)?.items?.[0]
     ?.customFieldItem ?? null;
 
 function buildWarrantyFilter(): string {
@@ -145,13 +145,6 @@ function buildTicketFilter(): string {
   );
 }
 
-// FUNÇÕES DE REGRAS DE NEGÓCIO
-
-/**
- * Verifica se a última ação do ticket foi criada por um cliente.
- * Critério exclusivo: createdBy.profileType === 2.
- * Não usa origin como fallback para evitar falsos positivos com ações de agentes.
- */
 function wasLastActionFromCustomer(ticket: MovideskTicket): boolean {
   if (!ticket.actions || ticket.actions.length === 0) {
     return false;
@@ -160,9 +153,6 @@ function wasLastActionFromCustomer(ticket: MovideskTicket): boolean {
   return lastAction?.createdBy?.profileType === 2;
 }
 
-/**
- * Verifica se a última ação do ticket ocorreu nos últimos 7 dias.
- */
 function wasLastActionWithin7Days(ticket: MovideskTicket): boolean {
   if (!ticket.actions || ticket.actions.length === 0) {
     return false;
@@ -174,19 +164,11 @@ function wasLastActionWithin7Days(ticket: MovideskTicket): boolean {
   return lastActionDate >= sevenDaysAgo;
 }
 
-/**
- * Verifica se o ticket possui responsável atribuído.
- * Considera apenas a presença de owner.id no campo direto ou no último ownerHistory.
- * A heurística por ownerTeam foi removida pois causava falsos positivos em tickets
- * de e-mail que não têm responsável real atribuído.
- */
 function ticketHasOwner(ticket: MovideskTicket): boolean {
-  // 1. Owner direto com ID preenchido
   if (ticket.owner && typeof ticket.owner === "object" && ticket.owner.id) {
     return true;
   }
 
-  // 2. Último histórico com owner e ID preenchido
   if (ticket.ownerHistories && ticket.ownerHistories.length > 0) {
     const lastHistory =
       ticket.ownerHistories[ticket.ownerHistories.length - 1];
@@ -486,12 +468,17 @@ async function syncTicketResponses(): Promise<{ total: number; stats: any }> {
     else skip += PAGE_SIZE;
   }
 
-  // Remove tickets que não estão mais no filtro
-  await prisma.ticketResponse.deleteMany({
-    where: {
-      ticketId: { notIn: Array.from(idsAtuais) },
-    },
-  });
+  if (idsAtuais.size > 0) {
+    await prisma.ticketResponse.deleteMany({
+      where: {
+        ticketId: { notIn: Array.from(idsAtuais) },
+      },
+    });
+  } else {
+    console.warn(
+      "[syncTicketResponses] idsAtuais vazio — deleteMany ignorado para evitar perda de dados.",
+    );
+  }
 
   return { total: totalProcessed, stats };
 }

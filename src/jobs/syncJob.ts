@@ -1,7 +1,7 @@
 import { PgBoss } from "pg-boss";
 import { syncWarranties, syncTicketResponses } from "../controllers/sync-tickets.controller.js";
 
-const boss = new PgBoss(process.env.DATABASE_URL!);
+export const boss = new PgBoss(process.env.DATABASE_URL!);
 
 export async function startJobs() {
   await boss.start();
@@ -17,5 +17,8 @@ export async function startJobs() {
     console.log(`Sync concluído — garantias: ${warranties} | tickets: ${ticketResponses}`);
   });
 
-  await boss.schedule("sync-tickets", "*/30 * * * *");
+
+  await boss.schedule("sync-tickets", "* * * * *", null, {
+    singletonKey: "sync-tickets",
+  });
 }
