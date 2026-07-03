@@ -12,21 +12,73 @@ datasource db {
   provider = "postgresql"
 }
 
+model Collaborators {
+  id        String  @id @default(uuid())
+  name      String
+  email     String  @unique
+  passWord  String
+  role      Role    @default(AGENT)
+  agent     String? // ID externo do Movidesk
+  avatarUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluations Evaluation[]
+}
+
+enum Role {
+  AGENT
+  SUPERVISOR
+}
+
+model TicketResponse {
+  id          Int       @id @default(autoincrement())
+  ticketId    String    @unique @map("ticket_id")
+  title       String?
+  category    String?
+  team        String?
+  channel     Channel   @default(EMAIL)
+  status      String
+  openedAt    DateTime  @default(now()) @map("opened_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  respondedAt DateTime  @default(now()) @map("responded_at")
+}
+
+enum Channel {
+  EMAIL
+  AGENT
+  BOT
+  DISTRIBUTOR
+}
+
 model WarrantyTickets {
-  id                 Int        @id @default(autoincrement())
-  ticket             Int        @unique
-  serialNumber       String
-  warrantyApprovedAt DateTime?
-  warrantyDeniedAt   DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                  Int       @id @default(autoincrement())
+  ticket              Int       @unique
+  serialNumber        String
+  category            String?
+  team                String?
+  approvalIssueReason String?
+  isRecurrentInAnalysis String?
+  warrantyApprovedAt  DateTime?
+  warrantyDeniedAt    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model Evaluation {
+  id             Int      @id @default(autoincrement())
+  collaboratorId String   @map("collaborator_id")
+  score          Decimal  @db.Decimal(2, 1)
+  evaluatedAt    DateTime @default(now()) @map("evaluated_at")
+
+  collaborator Collaborators @relation(fields: [collaboratorId], references: [id])
 }
 
 model InverterModel {
-  id       Int          @id @default(autoincrement())
+  id       Int     @id @default(autoincrement())
   model    String  @unique
   line     String?
   type     String
   gridType String?
 }
-
