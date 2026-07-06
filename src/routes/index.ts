@@ -18,8 +18,8 @@ router.get("/health", (req, res) => {
 
 router.use("",loginRouter)
 router.use(authenticationHandling)
-router.use("", ticketsRouter);
 router.use("", collaboratorstRouter)
+router.use("", ticketsRouter);
 
 
 router.get("/tickets/sync", async (req, res) => {
