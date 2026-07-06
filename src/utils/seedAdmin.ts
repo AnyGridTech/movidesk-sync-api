@@ -7,16 +7,12 @@ export async function seedAdmin() {
   const totalUsuarios = await prisma.collaborators.count();
 
   if (totalUsuarios > 0) {
-    console.log("[seedAdmin] Já existem usuários cadastrados. Seed ignorado.");
     return;
   }
 
   const { ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
 
   if (!ADMIN_NAME || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    console.warn(
-      "[seedAdmin] Variáveis ADMIN_NAME, ADMIN_EMAIL ou ADMIN_PASSWORD não configuradas no .env. Seed não executado."
-    );
     return;
   }
 
