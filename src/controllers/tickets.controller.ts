@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../client/prisma.js";
 
 
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
 
 function getPagination(req: Request) {
@@ -27,6 +27,23 @@ function buildPaginationMeta(total: number, page: number, pageSize: number) {
   };
 }
 
+/**
+ * IMPORTANTE: os campos warrantyApprovedAt/warrantyDeniedAt são gravados a
+ * partir de datas do Movidesk que já vêm em UTC (ex: "2026-07-06T00:00:00.000Z").
+ * Se construirmos os limites do range SEM o sufixo "Z", o JS interpreta a
+ * string como horário LOCAL do servidor, e não UTC. Em um servidor rodando
+ * fora de UTC (ex: America/Sao_Paulo, UTC-3), isso desloca a janela de busca
+ * em 3 horas, fazendo com que tickets aprovados/negados exatamente à meia-noite
+ * UTC "desapareçam" do dia correto (só aparecem se buscar o dia anterior).
+ * Por isso, forçamos "Z" explicitamente aqui para bater com o mesmo referencial
+ * usado ao salvar (new Date(valorComZ)).
+ */
+function buildUtcDateRange(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T23:59:59.999Z`);
+  return { start, end };
+}
+
 class TicketsController {
  
   async approved(req: Request, res: Response) {
@@ -39,8 +56,10 @@ class TicketsController {
         });
       }
 
-      const start = new Date(`${startDate}T00:00:00.000`);
-      const end = new Date(`${endDate}T23:59:59.999`);
+      const { start, end } = buildUtcDateRange(
+        String(startDate),
+        String(endDate),
+      );
 
       const { page, pageSize, skip } = getPagination(req);
 
@@ -83,8 +102,10 @@ class TicketsController {
         });
       }
 
-      const start = new Date(`${startDate}T00:00:00.000`);
-      const end = new Date(`${endDate}T23:59:59.999`);
+      const { start, end } = buildUtcDateRange(
+        String(startDate),
+        String(endDate),
+      );
 
       const { page, pageSize, skip } = getPagination(req);
 
@@ -148,19 +169,23 @@ class TicketsController {
       const { startDate, endDate } = req.query;
       const { page, pageSize, skip } = getPagination(req);
 
-      const dateFilter =
+      const normalizedDateFilter =
         startDate && endDate
-          ? {
-              openedAt: {
-                gte: new Date(`${startDate}T00:00:00.000`),
-                lte: new Date(`${endDate}T23:59:59.999`),
-              },
-            }
+          ? (() => {
+              const { start, end } = buildUtcDateRange(
+                String(startDate),
+                String(endDate),
+              );
+              return { openedAt: { gte: start, lte: end } };
+            })()
           : {};
 
-      const whereEmail = { team: "Email", ...dateFilter };
-      const whereInversor = { team: "Equipe Inversor", ...dateFilter };
-      const whereMonitoramento = { team: "Equipe Monitoramento", ...dateFilter };
+      const whereEmail = { team: "Email", ...normalizedDateFilter };
+      const whereInversor = { team: "Equipe Inversor", ...normalizedDateFilter };
+      const whereMonitoramento = {
+        team: "Equipe Monitoramento",
+        ...normalizedDateFilter,
+      };
 
       const [
         email,

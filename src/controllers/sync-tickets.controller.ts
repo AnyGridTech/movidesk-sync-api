@@ -28,11 +28,33 @@ const getFieldValueItem = (ticket: MovideskTicket, fieldId: number) =>
 
 function buildWarrantyFilter(): string {
   const year = new Date().getFullYear();
+
+  const warrantyCategoryOrFields =
+    `(` +
+    `category eq 'Garantia'` +
+    ` or category eq 'Fora da Garantia'` +
+    ` or customFieldValues/any(cf: cf/customFieldId eq 107733 and cf/value ne null)` +
+    ` or customFieldValues/any(cf: cf/customFieldId eq 243250 and cf/value ne null)` +
+    `)`;
+
   return (
-    `((category eq 'Garantia') or (category eq 'Fora da Garantia'))` +
-    ` and createdDate ge ${year}-01-01T00:00:00Z` +
-    ` and createdDate le ${year}-12-31T23:59:59Z`
+    `${warrantyCategoryOrFields}` +
+    ` and lastUpdate ge ${year}-01-01T00:00:00Z` +
+    ` and lastUpdate le ${year}-12-31T23:59:59Z`
   );
+}
+
+function normalizeWarrantyCategory(
+  rawCategory: string | null,
+  warrantyApprovedAt: string | null,
+  warrantyDeniedAt: string | null,
+): string | null {
+  if (rawCategory === "Garantia" || rawCategory === "Fora da Garantia") {
+    return rawCategory;
+  }
+  if (warrantyApprovedAt) return "Garantia";
+  if (warrantyDeniedAt) return "Fora da Garantia";
+  return rawCategory;
 }
 
 async function upsertWarrantyChunks(
@@ -53,7 +75,11 @@ async function upsertWarrantyChunks(
         const serialNumber = getFieldValue(ticket, 92408)!;
         const warrantyApprovedAt = getFieldValue(ticket, 107733);
         const warrantyDeniedAt = getFieldValue(ticket, 243250);
-        const category = ticket.category ?? null;
+        const category = normalizeWarrantyCategory(
+          ticket.category ?? null,
+          warrantyApprovedAt,
+          warrantyDeniedAt,
+        );
         const approvalIssueReason = getFieldValueItem(ticket, 224262);
         const isRecurrentInAnalysis = getFieldValueItem(ticket, 216435);
 

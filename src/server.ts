@@ -3,6 +3,7 @@ import { startJobs } from "./jobs/syncJob.js";
 import router from "./routes/index.js";
 import "dotenv/config";
 import { errorHadling } from "./middlewares/errorHandling.js";
+import { seedAdmin } from "./utils/seedAdmin.js";
 
 const app = express();
 
@@ -11,6 +12,7 @@ app.use(router);
 app.use(errorHadling);
 
 async function bootstrap() {
+  await seedAdmin();
   await startJobs();
 
   app.listen(process.env.PORT ?? 3000, () => {

@@ -14,11 +14,11 @@ export async function startJobs() {
       syncTicketResponses(),
     ]);
 
-    console.log(`Sync concluído — garantias: ${warranties} | tickets: ${ticketResponses}`);
+    console.log(`Sync concluído  garantias: ${warranties} | tickets: ${ticketResponses.total}`);
   });
 
 
-  await boss.schedule("sync-tickets", "* * * * *", null, {
+  await boss.schedule("sync-tickets", "*/60 * * * *", null, {
     singletonKey: "sync-tickets",
   });
 }
