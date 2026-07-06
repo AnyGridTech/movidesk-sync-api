@@ -39,8 +39,8 @@ function buildWarrantyFilter(): string {
 
   return (
     `${warrantyCategoryOrFields}` +
-    ` and createdDate ge ${year}-01-01T00:00:00Z` +
-    ` and createdDate le ${year}-12-31T23:59:59Z`
+    ` and lastUpdate ge ${year}-01-01T00:00:00Z` +
+    ` and lastUpdate le ${year}-12-31T23:59:59Z`
   );
 }
 
