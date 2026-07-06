@@ -14,7 +14,7 @@ export async function startJobs() {
       syncTicketResponses(),
     ]);
 
-    console.log(`Sync concluído — garantias: ${warranties} | tickets: ${ticketResponses.total}`);
+    console.log(`Sync concluído  garantias: ${warranties} | tickets: ${ticketResponses.total}`);
   });
 
 
